@@ -32,31 +32,31 @@ type Status struct {
 	LeadTransferee uint64
 }
 
-func getProgressCopy(r *raft) map[uint64]Progress {
+func getProgressCopy(r *Raft) map[uint64]Progress {
 	prs := make(map[uint64]Progress)
-	for id, p := range r.prs {
+	for id, p := range r.Prs {
 		prs[id] = *p
 	}
 
-	for id, p := range r.learnerPrs {
+	for id, p := range r.LearnerPrs {
 		prs[id] = *p
 	}
 	return prs
 }
 
-func getStatusWithoutProgress(r *raft) Status {
+func getStatusWithoutProgress(r *Raft) Status {
 	s := Status{
 		ID:             r.id,
 		LeadTransferee: r.leadTransferee,
 	}
 	s.HardState = r.hardState()
 	s.SoftState = *r.softState()
-	s.Applied = r.raftLog.applied
+	s.Applied = r.RaftLog.applied
 	return s
 }
 
-// getStatus gets a copy of the current raft status.
-func getStatus(r *raft) Status {
+// getStatus gets a copy of the current Raft status.
+func getStatus(r *Raft) Status {
 	s := getStatusWithoutProgress(r)
 	if s.RaftState == StateLeader {
 		s.Progress = getProgressCopy(r)
@@ -64,7 +64,7 @@ func getStatus(r *raft) Status {
 	return s
 }
 
-// MarshalJSON translates the raft status into JSON.
+// MarshalJSON translates the Raft status into JSON.
 // TODO: try to simplify this by introducing ID type into raft
 func (s Status) MarshalJSON() ([]byte, error) {
 	j := fmt.Sprintf(`{"id":"%x","term":%d,"vote":"%x","commit":%d,"lead":"%x","raftState":%q,"applied":%d,"progress":{`,

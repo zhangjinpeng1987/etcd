@@ -31,13 +31,13 @@ var ErrStepPeerNotFound = errors.New("raft: cannot step as peer not found")
 // The methods of this struct correspond to the methods of Node and are described
 // more fully there.
 type RawNode struct {
-	raft       *raft
+	Raft       *Raft
 	prevSoftSt *SoftState
 	prevHardSt pb.HardState
 }
 
 func (rn *RawNode) newReady() Ready {
-	return newReady(rn.raft, rn.prevSoftSt, rn.prevHardSt)
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt)
 }
 
 func (rn *RawNode) commitReady(rd Ready) {
@@ -53,18 +53,18 @@ func (rn *RawNode) commitReady(rd Ready) {
 	// new Commit index, this does not mean that we're also applying
 	// all of the new entries due to commit pagination by size.
 	if index := rd.appliedCursor(); index > 0 {
-		rn.raft.raftLog.appliedTo(index)
+		rn.Raft.RaftLog.appliedTo(index)
 	}
 
 	if len(rd.Entries) > 0 {
 		e := rd.Entries[len(rd.Entries)-1]
-		rn.raft.raftLog.stableTo(e.Index, e.Term)
+		rn.Raft.RaftLog.stableTo(e.Index, e.Term)
 	}
 	if !IsEmptySnap(rd.Snapshot) {
-		rn.raft.raftLog.stableSnapTo(rd.Snapshot.Metadata.Index)
+		rn.Raft.RaftLog.stableSnapTo(rd.Snapshot.Metadata.Index)
 	}
 	if len(rd.ReadStates) != 0 {
-		rn.raft.readStates = nil
+		rn.Raft.readStates = nil
 	}
 }
 
@@ -75,7 +75,7 @@ func NewRawNode(config *Config, peers []Peer) (*RawNode, error) {
 	}
 	r := newRaft(config)
 	rn := &RawNode{
-		raft: r,
+		Raft: r,
 	}
 	lastIndex, err := config.Storage.LastIndex()
 	if err != nil {
@@ -97,8 +97,8 @@ func NewRawNode(config *Config, peers []Peer) (*RawNode, error) {
 
 			ents[i] = pb.Entry{Type: pb.EntryConfChange, Term: 1, Index: uint64(i + 1), Data: data}
 		}
-		r.raftLog.append(ents...)
-		r.raftLog.committed = uint64(len(ents))
+		r.RaftLog.append(ents...)
+		r.RaftLog.committed = uint64(len(ents))
 		for _, peer := range peers {
 			r.addNode(peer.ID)
 		}
@@ -117,7 +117,7 @@ func NewRawNode(config *Config, peers []Peer) (*RawNode, error) {
 
 // Tick advances the internal logical clock by a single tick.
 func (rn *RawNode) Tick() {
-	rn.raft.tick()
+	rn.Raft.tick()
 }
 
 // TickQuiesced advances the internal logical clock by a single tick without
@@ -129,21 +129,21 @@ func (rn *RawNode) Tick() {
 // WARNING: Be very careful about using this method as it subverts the Raft
 // state machine. You should probably be using Tick instead.
 func (rn *RawNode) TickQuiesced() {
-	rn.raft.electionElapsed++
+	rn.Raft.electionElapsed++
 }
 
 // Campaign causes this RawNode to transition to candidate state.
 func (rn *RawNode) Campaign() error {
-	return rn.raft.Step(pb.Message{
+	return rn.Raft.Step(pb.Message{
 		Type: pb.MsgHup,
 	})
 }
 
 // Propose proposes data be appended to the raft log.
 func (rn *RawNode) Propose(data []byte) error {
-	return rn.raft.Step(pb.Message{
+	return rn.Raft.Step(pb.Message{
 		Type: pb.MsgProp,
-		From: rn.raft.id,
+		From: rn.Raft.id,
 		Entries: []pb.Entry{
 			{Data: data},
 		}})
@@ -155,7 +155,7 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 	if err != nil {
 		return err
 	}
-	return rn.raft.Step(pb.Message{
+	return rn.Raft.Step(pb.Message{
 		Type: pb.MsgProp,
 		Entries: []pb.Entry{
 			{Type: pb.EntryConfChange, Data: data},
@@ -166,20 +166,20 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChange) error {
 // ApplyConfChange applies a config change to the local node.
 func (rn *RawNode) ApplyConfChange(cc pb.ConfChange) *pb.ConfState {
 	if cc.NodeID == None {
-		return &pb.ConfState{Nodes: rn.raft.nodes(), Learners: rn.raft.learnerNodes()}
+		return &pb.ConfState{Nodes: rn.Raft.nodes(), Learners: rn.Raft.learnerNodes()}
 	}
 	switch cc.Type {
 	case pb.ConfChangeAddNode:
-		rn.raft.addNode(cc.NodeID)
+		rn.Raft.addNode(cc.NodeID)
 	case pb.ConfChangeAddLearnerNode:
-		rn.raft.addLearner(cc.NodeID)
+		rn.Raft.addLearner(cc.NodeID)
 	case pb.ConfChangeRemoveNode:
-		rn.raft.removeNode(cc.NodeID)
+		rn.Raft.removeNode(cc.NodeID)
 	case pb.ConfChangeUpdateNode:
 	default:
 		panic("unexpected conf type")
 	}
-	return &pb.ConfState{Nodes: rn.raft.nodes(), Learners: rn.raft.learnerNodes()}
+	return &pb.ConfState{Nodes: rn.Raft.nodes(), Learners: rn.Raft.learnerNodes()}
 }
 
 // Step advances the state machine using the given message.
@@ -188,8 +188,8 @@ func (rn *RawNode) Step(m pb.Message) error {
 	if IsLocalMsg(m.Type) {
 		return ErrStepLocalMsg
 	}
-	if pr := rn.raft.getProgress(m.From); pr != nil || !IsResponseMsg(m.Type) {
-		return rn.raft.Step(m)
+	if pr := rn.Raft.getProgress(m.From); pr != nil || !IsResponseMsg(m.Type) {
+		return rn.Raft.Step(m)
 	}
 	return ErrStepPeerNotFound
 }
@@ -197,25 +197,25 @@ func (rn *RawNode) Step(m pb.Message) error {
 // Ready returns the current point-in-time state of this RawNode.
 func (rn *RawNode) Ready() Ready {
 	rd := rn.newReady()
-	rn.raft.msgs = nil
-	rn.raft.reduceUncommittedSize(rd.CommittedEntries)
+	rn.Raft.msgs = nil
+	rn.Raft.reduceUncommittedSize(rd.CommittedEntries)
 	return rd
 }
 
 // HasReady called when RawNode user need to check if any Ready pending.
 // Checking logic in this method should be consistent with Ready.containsUpdates().
 func (rn *RawNode) HasReady() bool {
-	r := rn.raft
+	r := rn.Raft
 	if !r.softState().equal(rn.prevSoftSt) {
 		return true
 	}
 	if hardSt := r.hardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.prevHardSt) {
 		return true
 	}
-	if r.raftLog.unstable.snapshot != nil && !IsEmptySnap(*r.raftLog.unstable.snapshot) {
+	if r.RaftLog.unstable.snapshot != nil && !IsEmptySnap(*r.RaftLog.unstable.snapshot) {
 		return true
 	}
-	if len(r.msgs) > 0 || len(r.raftLog.unstableEntries()) > 0 || r.raftLog.hasNextEnts() {
+	if len(r.msgs) > 0 || len(r.RaftLog.unstableEntries()) > 0 || r.RaftLog.hasNextEnts() {
 		return true
 	}
 	if len(r.readStates) != 0 {
@@ -232,7 +232,7 @@ func (rn *RawNode) Advance(rd Ready) {
 
 // Status returns the current status of the given group.
 func (rn *RawNode) Status() *Status {
-	status := getStatus(rn.raft)
+	status := getStatus(rn.Raft)
 	return &status
 }
 
@@ -241,7 +241,7 @@ func (rn *RawNode) Status() *Status {
 // is more performant if the Progress is not required. See WithProgress for an
 // allocation-free way to introspect the Progress.
 func (rn *RawNode) StatusWithoutProgress() Status {
-	return getStatusWithoutProgress(rn.raft)
+	return getStatusWithoutProgress(rn.Raft)
 }
 
 // ProgressType indicates the type of replica a Progress corresponds to.
@@ -257,12 +257,12 @@ const (
 // WithProgress is a helper to introspect the Progress for this node and its
 // peers.
 func (rn *RawNode) WithProgress(visitor func(id uint64, typ ProgressType, pr Progress)) {
-	for id, pr := range rn.raft.prs {
+	for id, pr := range rn.Raft.Prs {
 		pr := *pr
 		pr.ins = nil
 		visitor(id, ProgressTypePeer, pr)
 	}
-	for id, pr := range rn.raft.learnerPrs {
+	for id, pr := range rn.Raft.LearnerPrs {
 		pr := *pr
 		pr.ins = nil
 		visitor(id, ProgressTypeLearner, pr)
@@ -271,19 +271,19 @@ func (rn *RawNode) WithProgress(visitor func(id uint64, typ ProgressType, pr Pro
 
 // ReportUnreachable reports the given node is not reachable for the last send.
 func (rn *RawNode) ReportUnreachable(id uint64) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgUnreachable, From: id})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgUnreachable, From: id})
 }
 
 // ReportSnapshot reports the status of the sent snapshot.
 func (rn *RawNode) ReportSnapshot(id uint64, status SnapshotStatus) {
 	rej := status == SnapshotFailure
 
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgSnapStatus, From: id, Reject: rej})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgSnapStatus, From: id, Reject: rej})
 }
 
 // TransferLeader tries to transfer leadership to the given transferee.
 func (rn *RawNode) TransferLeader(transferee uint64) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgTransferLeader, From: transferee})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgTransferLeader, From: transferee})
 }
 
 // ReadIndex requests a read state. The read state will be set in ready.
@@ -291,5 +291,5 @@ func (rn *RawNode) TransferLeader(transferee uint64) {
 // index, any linearizable read requests issued before the read request can be
 // processed safely. The read state will have the same rctx attached.
 func (rn *RawNode) ReadIndex(rctx []byte) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }
