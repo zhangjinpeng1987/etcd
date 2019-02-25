@@ -31,7 +31,7 @@ func (rn *RawNode) Bootstrap(peers []Peer) error {
 	if len(peers) == 0 {
 		return errors.New("must provide at least one peer to Bootstrap")
 	}
-	lastIndex, err := rn.raft.raftLog.storage.LastIndex()
+	lastIndex, err := rn.Raft.RaftLog.storage.LastIndex()
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (rn *RawNode) Bootstrap(peers []Peer) error {
 
 	// TODO(tbg): remove StartNode and give the application the right tools to
 	// bootstrap the initial membership in a cleaner way.
-	rn.raft.becomeFollower(1, None)
+	rn.Raft.becomeFollower(1, None)
 	ents := make([]pb.Entry, len(peers))
 	for i, peer := range peers {
 		cc := pb.ConfChange{Type: pb.ConfChangeAddNode, NodeID: peer.ID, Context: peer.Context}
@@ -58,7 +58,7 @@ func (rn *RawNode) Bootstrap(peers []Peer) error {
 
 		ents[i] = pb.Entry{Type: pb.EntryConfChange, Term: 1, Index: uint64(i + 1), Data: data}
 	}
-	rn.raft.raftLog.append(ents...)
+	rn.Raft.RaftLog.append(ents...)
 
 	// Now apply them, mainly so that the application can call Campaign
 	// immediately after StartNode in tests. Note that these nodes will
@@ -72,9 +72,9 @@ func (rn *RawNode) Bootstrap(peers []Peer) error {
 	//
 	// TODO(bdarnell): These entries are still unstable; do we need to preserve
 	// the invariant that committed < unstable?
-	rn.raft.raftLog.committed = uint64(len(ents))
+	rn.Raft.RaftLog.committed = uint64(len(ents))
 	for _, peer := range peers {
-		rn.raft.applyConfChange(pb.ConfChange{NodeID: peer.ID, Type: pb.ConfChangeAddNode}.AsV2())
+		rn.Raft.applyConfChange(pb.ConfChange{NodeID: peer.ID, Type: pb.ConfChangeAddNode}.AsV2())
 	}
 	return nil
 }

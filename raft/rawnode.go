@@ -32,7 +32,7 @@ var ErrStepPeerNotFound = errors.New("raft: cannot step as peer not found")
 // The methods of this struct correspond to the methods of Node and are described
 // more fully there.
 type RawNode struct {
-	raft       *raft
+	Raft       *Raft
 	prevSoftSt *SoftState
 	prevHardSt pb.HardState
 }
@@ -47,7 +47,7 @@ type RawNode struct {
 func NewRawNode(config *Config) (*RawNode, error) {
 	r := newRaft(config)
 	rn := &RawNode{
-		raft: r,
+		Raft: r,
 	}
 	rn.prevSoftSt = r.softState()
 	rn.prevHardSt = r.hardState()
@@ -56,7 +56,7 @@ func NewRawNode(config *Config) (*RawNode, error) {
 
 // Tick advances the internal logical clock by a single tick.
 func (rn *RawNode) Tick() {
-	rn.raft.tick()
+	rn.Raft.tick()
 }
 
 // TickQuiesced advances the internal logical clock by a single tick without
@@ -68,21 +68,21 @@ func (rn *RawNode) Tick() {
 // WARNING: Be very careful about using this method as it subverts the Raft
 // state machine. You should probably be using Tick instead.
 func (rn *RawNode) TickQuiesced() {
-	rn.raft.electionElapsed++
+	rn.Raft.electionElapsed++
 }
 
 // Campaign causes this RawNode to transition to candidate state.
 func (rn *RawNode) Campaign() error {
-	return rn.raft.Step(pb.Message{
+	return rn.Raft.Step(pb.Message{
 		Type: pb.MsgHup,
 	})
 }
 
 // Propose proposes data be appended to the raft log.
 func (rn *RawNode) Propose(data []byte) error {
-	return rn.raft.Step(pb.Message{
+	return rn.Raft.Step(pb.Message{
 		Type: pb.MsgProp,
-		From: rn.raft.id,
+		From: rn.Raft.id,
 		Entries: []pb.Entry{
 			{Data: data},
 		}})
@@ -95,12 +95,12 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChangeI) error {
 	if err != nil {
 		return err
 	}
-	return rn.raft.Step(m)
+	return rn.Raft.Step(m)
 }
 
 // ApplyConfChange applies a config change to the local node.
 func (rn *RawNode) ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState {
-	cs := rn.raft.applyConfChange(cc.AsV2())
+	cs := rn.Raft.applyConfChange(cc.AsV2())
 	return &cs
 }
 
@@ -110,8 +110,8 @@ func (rn *RawNode) Step(m pb.Message) error {
 	if IsLocalMsg(m.Type) {
 		return ErrStepLocalMsg
 	}
-	if pr := rn.raft.prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
-		return rn.raft.Step(m)
+	if pr := rn.Raft.Prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
+		return rn.Raft.Step(m)
 	}
 	return ErrStepPeerNotFound
 }
@@ -129,7 +129,7 @@ func (rn *RawNode) Ready() Ready {
 // readyWithoutAccept returns a Ready. This is a read-only operation, i.e. there
 // is no obligation that the Ready must be handled.
 func (rn *RawNode) readyWithoutAccept() Ready {
-	return newReady(rn.raft, rn.prevSoftSt, rn.prevHardSt)
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt)
 }
 
 // acceptReady is called when the consumer of the RawNode has decided to go
@@ -140,25 +140,25 @@ func (rn *RawNode) acceptReady(rd Ready) {
 		rn.prevSoftSt = rd.SoftState
 	}
 	if len(rd.ReadStates) != 0 {
-		rn.raft.readStates = nil
+		rn.Raft.readStates = nil
 	}
-	rn.raft.msgs = nil
+	rn.Raft.msgs = nil
 }
 
 // HasReady called when RawNode user need to check if any Ready pending.
 // Checking logic in this method should be consistent with Ready.containsUpdates().
 func (rn *RawNode) HasReady() bool {
-	r := rn.raft
+	r := rn.Raft
 	if !r.softState().equal(rn.prevSoftSt) {
 		return true
 	}
 	if hardSt := r.hardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.prevHardSt) {
 		return true
 	}
-	if r.raftLog.unstable.snapshot != nil && !IsEmptySnap(*r.raftLog.unstable.snapshot) {
+	if r.RaftLog.unstable.snapshot != nil && !IsEmptySnap(*r.RaftLog.unstable.snapshot) {
 		return true
 	}
-	if len(r.msgs) > 0 || len(r.raftLog.unstableEntries()) > 0 || r.raftLog.hasNextEnts() {
+	if len(r.msgs) > 0 || len(r.RaftLog.unstableEntries()) > 0 || r.RaftLog.hasNextEnts() {
 		return true
 	}
 	if len(r.readStates) != 0 {
@@ -173,20 +173,20 @@ func (rn *RawNode) Advance(rd Ready) {
 	if !IsEmptyHardState(rd.HardState) {
 		rn.prevHardSt = rd.HardState
 	}
-	rn.raft.advance(rd)
+	rn.Raft.advance(rd)
 }
 
 // Status returns the current status of the given group. This allocates, see
 // BasicStatus and WithProgress for allocation-friendlier choices.
 func (rn *RawNode) Status() Status {
-	status := getStatus(rn.raft)
+	status := getStatus(rn.Raft)
 	return status
 }
 
 // BasicStatus returns a BasicStatus. Notably this does not contain the
 // Progress map; see WithProgress for an allocation-free way to inspect it.
 func (rn *RawNode) BasicStatus() BasicStatus {
-	return getBasicStatus(rn.raft)
+	return getBasicStatus(rn.Raft)
 }
 
 // ProgressType indicates the type of replica a Progress corresponds to.
@@ -202,7 +202,7 @@ const (
 // WithProgress is a helper to introspect the Progress for this node and its
 // peers.
 func (rn *RawNode) WithProgress(visitor func(id uint64, typ ProgressType, pr tracker.Progress)) {
-	rn.raft.prs.Visit(func(id uint64, pr *tracker.Progress) {
+	rn.Raft.Prs.Visit(func(id uint64, pr *tracker.Progress) {
 		typ := ProgressTypePeer
 		if pr.IsLearner {
 			typ = ProgressTypeLearner
@@ -215,19 +215,19 @@ func (rn *RawNode) WithProgress(visitor func(id uint64, typ ProgressType, pr tra
 
 // ReportUnreachable reports the given node is not reachable for the last send.
 func (rn *RawNode) ReportUnreachable(id uint64) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgUnreachable, From: id})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgUnreachable, From: id})
 }
 
 // ReportSnapshot reports the status of the sent snapshot.
 func (rn *RawNode) ReportSnapshot(id uint64, status SnapshotStatus) {
 	rej := status == SnapshotFailure
 
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgSnapStatus, From: id, Reject: rej})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgSnapStatus, From: id, Reject: rej})
 }
 
 // TransferLeader tries to transfer leadership to the given transferee.
 func (rn *RawNode) TransferLeader(transferee uint64) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgTransferLeader, From: transferee})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgTransferLeader, From: transferee})
 }
 
 // ReadIndex requests a read state. The read state will be set in ready.
@@ -235,5 +235,5 @@ func (rn *RawNode) TransferLeader(transferee uint64) {
 // index, any linearizable read requests issued before the read request can be
 // processed safely. The read state will have the same rctx attached.
 func (rn *RawNode) ReadIndex(rctx []byte) {
-	_ = rn.raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
+	_ = rn.Raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }

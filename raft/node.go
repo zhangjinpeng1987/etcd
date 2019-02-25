@@ -299,7 +299,7 @@ func (n *node) run() {
 	var advancec chan struct{}
 	var rd Ready
 
-	r := n.rn.raft
+	r := n.rn.Raft
 
 	lead := None
 
@@ -319,19 +319,19 @@ func (n *node) run() {
 			readyc = n.readyc
 		}
 
-		if lead != r.lead {
+		if lead != r.Lead {
 			if r.hasLeader() {
 				if lead == None {
-					r.logger.Infof("raft.node: %x elected leader %x at term %d", r.id, r.lead, r.Term)
+					r.logger.Infof("raft.node: %x elected leader %x at term %d", r.id, r.Lead, r.Term)
 				} else {
-					r.logger.Infof("raft.node: %x changed leader from %x to %x at term %d", r.id, lead, r.lead, r.Term)
+					r.logger.Infof("raft.node: %x changed leader from %x to %x at term %d", r.id, lead, r.Lead, r.Term)
 				}
 				propc = n.propc
 			} else {
 				r.logger.Infof("raft.node: %x lost leader %x at term %d", r.id, lead, r.Term)
 				propc = nil
 			}
-			lead = r.lead
+			lead = r.Lead
 		}
 
 		select {
@@ -348,11 +348,11 @@ func (n *node) run() {
 			}
 		case m := <-n.recvc:
 			// filter out response message from unknown From.
-			if pr := r.prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
+			if pr := r.Prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
 				r.Step(m)
 			}
 		case cc := <-n.confc:
-			_, okBefore := r.prs.Progress[r.id]
+			_, okBefore := r.Prs.Progress[r.id]
 			cs := r.applyConfChange(cc)
 			// If the node was removed, block incoming proposals. Note that we
 			// only do this if the node was in the config before. Nodes may be
@@ -363,7 +363,7 @@ func (n *node) run() {
 			// NB: propc is reset when the leader changes, which, if we learn
 			// about it, sort of implies that we got readded, maybe? This isn't
 			// very sound and likely has bugs.
-			if _, okAfter := r.prs.Progress[r.id]; okBefore && !okAfter {
+			if _, okAfter := r.Prs.Progress[r.id]; okBefore && !okAfter {
 				var found bool
 				for _, sl := range [][]uint64{cs.Voters, cs.VotersOutgoing} {
 					for _, id := range sl {
@@ -405,7 +405,7 @@ func (n *node) Tick() {
 	case n.tickc <- struct{}{}:
 	case <-n.done:
 	default:
-		n.rn.raft.logger.Warningf("%x (leader %v) A tick missed to fire. Node blocks too long!", n.rn.raft.id, n.rn.raft.id == n.rn.raft.lead)
+		n.rn.Raft.logger.Warningf("%x (leader %v) A tick missed to fire. Node blocks too long!", n.rn.Raft.id, n.rn.Raft.id == n.rn.Raft.Lead)
 	}
 }
 
@@ -550,10 +550,10 @@ func (n *node) ReadIndex(ctx context.Context, rctx []byte) error {
 	return n.step(ctx, pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }
 
-func newReady(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
+func newReady(r *Raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
 	rd := Ready{
-		Entries:          r.raftLog.unstableEntries(),
-		CommittedEntries: r.raftLog.nextEnts(),
+		Entries:          r.RaftLog.unstableEntries(),
+		CommittedEntries: r.RaftLog.nextEnts(),
 		Messages:         r.msgs,
 	}
 	if softSt := r.softState(); !softSt.equal(prevSoftSt) {
@@ -562,8 +562,8 @@ func newReady(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
 	if hardSt := r.hardState(); !isHardStateEqual(hardSt, prevHardSt) {
 		rd.HardState = hardSt
 	}
-	if r.raftLog.unstable.snapshot != nil {
-		rd.Snapshot = *r.raftLog.unstable.snapshot
+	if r.RaftLog.unstable.snapshot != nil {
+		rd.Snapshot = *r.RaftLog.unstable.snapshot
 	}
 	if len(r.readStates) != 0 {
 		rd.ReadStates = r.readStates
