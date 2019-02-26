@@ -179,6 +179,11 @@ func (l *RaftLog) hasNextEnts() bool {
 	return l.committed+1 > off
 }
 
+func (l *RaftLog) hasNextEntsSince(sinceIdx uint64) bool {
+	off := max(sinceIdx+1, l.firstIndex())
+	return l.committed+1 > off
+}
+
 func (l *RaftLog) snapshot() (pb.Snapshot, error) {
 	if l.unstable.snapshot != nil {
 		return *l.unstable.snapshot, nil

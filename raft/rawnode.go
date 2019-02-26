@@ -313,3 +313,40 @@ func (rn *RawNode) GetSnap() *pb.Snapshot {
 func (rn *RawNode) ReadySince(appliedIdx uint64) Ready {
 	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt, &appliedIdx)
 }
+
+func hardStateIsEmpty(hs *pb.HardState) bool {
+	return hs.Commit == 0 && hs.Term == 0 && hs.Vote == 0
+}
+
+func hardStateEqual(l, r *pb.HardState) bool {
+	return l.Commit == r.Commit && l.Term == r.Term && l.Vote == r.Vote
+}
+
+func (rn *RawNode) HasReadySince(appliedIdx *uint64) bool {
+	if len(rn.Raft.msgs) != 0 || rn.Raft.RaftLog.unstableEntries != nil {
+		return true
+	}
+	if len(rn.Raft.readStates) != 0 {
+		return true
+	}
+	if snap := rn.GetSnap(); snap != nil && !IsEmptySnap(*snap) {
+		return true
+	}
+	hasUnappliedEntries := false
+	if appliedIdx != nil {
+		hasUnappliedEntries = rn.Raft.RaftLog.hasNextEntsSince(*appliedIdx)
+	} else {
+		hasUnappliedEntries = rn.Raft.RaftLog.hasNextEnts()
+	}
+	if hasUnappliedEntries {
+		return true
+	}
+	if rn.Raft.softState() != rn.prevSoftSt {
+		return true
+	}
+	hs := rn.Raft.hardState()
+	if hardStateIsEmpty(&hs) && !hardStateEqual(&hs, &rn.prevHardSt) {
+		return true
+	}
+	return false
+}
