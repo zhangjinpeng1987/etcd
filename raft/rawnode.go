@@ -37,7 +37,7 @@ type RawNode struct {
 }
 
 func (rn *RawNode) newReady() Ready {
-	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt)
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt, nil)
 }
 
 func (rn *RawNode) commitReady(rd Ready) {
@@ -66,6 +66,10 @@ func (rn *RawNode) commitReady(rd Ready) {
 	if len(rd.ReadStates) != 0 {
 		rn.Raft.readStates = nil
 	}
+}
+
+func (rn *RawNode) commitApply(applied uint64) {
+	rn.Raft.RaftLog.appliedTo(applied)
 }
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
@@ -230,6 +234,14 @@ func (rn *RawNode) Advance(rd Ready) {
 	rn.commitReady(rd)
 }
 
+func (rn *RawNode) AdvanceApply(applied uint64) {
+	rn.commitApply(applied)
+}
+
+func (rn *RawNode) SkipBcastCommit(skip bool) {
+	rn.Raft.SkipBcastCommit(skip)
+}
+
 // Status returns the current status of the given group.
 func (rn *RawNode) Status() *Status {
 	status := getStatus(rn.Raft)
@@ -292,4 +304,12 @@ func (rn *RawNode) TransferLeader(transferee uint64) {
 // processed safely. The read state will have the same rctx attached.
 func (rn *RawNode) ReadIndex(rctx []byte) {
 	_ = rn.Raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
+}
+
+func (rn *RawNode) GetSnap() *pb.Snapshot {
+	return rn.Raft.GetSnap()
+}
+
+func (rn *RawNode) ReadySince(appliedIdx uint64) Ready {
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt, &appliedIdx)
 }

@@ -160,6 +160,18 @@ func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	return nil
 }
 
+func (l *RaftLog) nextEntsSince(sinceIdx uint64) (ents []pb.Entry) {
+	off := max(sinceIdx+1, l.firstIndex())
+	if l.committed+1 > off {
+		ents, err := l.slice(off, l.committed+1, l.maxNextEntsSize)
+		if err != nil {
+			l.logger.Panicf("unexpected error when getting unapplied entries (%v)", err)
+		}
+		return ents
+	}
+	return nil
+}
+
 // hasNextEnts returns if there is any available entries for execution. This
 // is a fast check without heavy RaftLog.slice() in RaftLog.nextEnts().
 func (l *RaftLog) hasNextEnts() bool {
