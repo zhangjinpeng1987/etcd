@@ -129,7 +129,7 @@ func (rn *RawNode) Ready() Ready {
 // readyWithoutAccept returns a Ready. This is a read-only operation, i.e. there
 // is no obligation that the Ready must be handled.
 func (rn *RawNode) readyWithoutAccept() Ready {
-	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt)
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt, nil)
 }
 
 // acceptReady is called when the consumer of the RawNode has decided to go
@@ -236,4 +236,12 @@ func (rn *RawNode) TransferLeader(transferee uint64) {
 // processed safely. The read state will have the same rctx attached.
 func (rn *RawNode) ReadIndex(rctx []byte) {
 	_ = rn.Raft.Step(pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
+}
+
+func (rn *RawNode) GetSnap() *pb.Snapshot {
+	return rn.Raft.GetSnap()
+}
+
+func (rn *RawNode) ReadySince(appliedIdx uint64) Ready {
+	return newReady(rn.Raft, rn.prevSoftSt, rn.prevHardSt, &appliedIdx)
 }

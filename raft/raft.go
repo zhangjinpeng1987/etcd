@@ -181,6 +181,8 @@ type Config struct {
 	// rejoins the cluster.
 	PreVote bool
 
+	skipBcastCommit bool
+
 	// ReadOnlyOption specifies how the read only request is processed.
 	//
 	// ReadOnlySafe guarantees the linearizability of the read only request by
@@ -286,6 +288,20 @@ type Raft struct {
 	// be proposed if the leader's applied index is greater than this
 	// value.
 	PendingConfIndex uint64
+	// The last `BeginMembershipChange` entry. Once we make this change we exit the joint state.
+	//
+	// This is different than `pending_conf_index` since it is more specific, and also exact.
+	// While `pending_conf_index` is conservatively set at times to ensure safety in the
+	// one-by-one change method, in joint consensus based changes we track the state exactly. The
+	// index here **must** only be set when a `BeginMembershipChange` is present at that index.
+	//
+	// # Caveats
+	//
+	// It is important that whenever this is set that `pending_conf_index` is also set to the
+	// value if it is greater than the existing value.
+	//
+	// **Use `Raft::set_pending_membership_change()` to change this value.**
+	pendingMembershipChange *pb.ConfChange
 	// an estimate of the size of the uncommitted tail of the Raft log. Used to
 	// prevent unbounded log growth. Only maintained by the leader. Reset on
 	// term changes.
@@ -305,6 +321,8 @@ type Raft struct {
 
 	checkQuorum bool
 	preVote     bool
+
+	skipBcastCommit bool
 
 	heartbeatTimeout int
 	electionTimeout  int
@@ -354,6 +372,7 @@ func newRaft(c *Config) *Raft {
 		logger:                    c.Logger,
 		checkQuorum:               c.CheckQuorum,
 		preVote:                   c.PreVote,
+		skipBcastCommit:           c.skipBcastCommit,
 		readOnly:                  newReadOnly(c.ReadOnlyOption),
 		disableProposalForwarding: c.DisableProposalForwarding,
 	}
@@ -391,6 +410,14 @@ func (r *Raft) PendingReadCount() int {
 
 func (r *Raft) ReadyReadCount() int {
 	return len(r.readStates)
+}
+
+func (r *Raft) GetSnap() *pb.Snapshot {
+	return r.RaftLog.unstable.snapshot
+}
+
+func (r *Raft) SkipBcastCommit(skip bool) {
+	r.skipBcastCommit = skip
 }
 
 func (r *Raft) InLease() bool {
@@ -1498,6 +1525,14 @@ func (r *Raft) restore(s pb.Snapshot) bool {
 	r.logger.Infof("%x [commit: %d, lastindex: %d, lastterm: %d] restored snapshot [index: %d, term: %d]",
 		r.id, r.RaftLog.committed, r.RaftLog.LastIndex(), r.RaftLog.lastTerm(), s.Metadata.Index, s.Metadata.Term)
 	return true
+}
+
+func (r *Raft) hasPendingConf() bool {
+	return r.PendingConfIndex > r.RaftLog.applied || r.pendingMembershipChange != nil
+}
+
+func (r *Raft) ShouldBcastCommit() bool {
+	return !r.skipBcastCommit || r.hasPendingConf()
 }
 
 // promotable indicates whether state machine can be promoted to Leader,

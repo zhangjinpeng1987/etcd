@@ -550,11 +550,18 @@ func (n *node) ReadIndex(ctx context.Context, rctx []byte) error {
 	return n.step(ctx, pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }
 
-func newReady(r *Raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
+func newReady(r *Raft, prevSoftSt *SoftState, prevHardSt pb.HardState, sinceIdx *uint64) Ready {
 	rd := Ready{
-		Entries:          r.RaftLog.unstableEntries(),
-		CommittedEntries: r.RaftLog.nextEnts(),
-		Messages:         r.msgs,
+		Entries: r.RaftLog.unstableEntries(),
+	}
+	if len(r.msgs) != 0 {
+		rd.Messages = r.msgs
+		r.msgs = nil
+	}
+	if sinceIdx != nil {
+		rd.CommittedEntries = r.RaftLog.nextEntsSince(*sinceIdx)
+	} else {
+		rd.CommittedEntries = r.RaftLog.nextEnts()
 	}
 	if softSt := r.softState(); !softSt.equal(prevSoftSt) {
 		rd.SoftState = softSt
